@@ -288,6 +288,15 @@ struct ContainerStatus {
         score += roundint(input.target[result.size() - 1].distance(mixedColor) * 10000);
     }
 
+    int getScore(const Input &input, bool is_final) const {
+        if (!is_final) {
+            return score;
+        }
+        else {
+            return score + accumulate(capacity.begin(), capacity.end(), 0) / 10 * input.D;
+        }
+    }
+
     Output toOutput(const Input &input) const {
         Output output(SIZE);
         for (int i = 0; i < SIZE - 1; ++i) {
@@ -361,7 +370,7 @@ struct Solution {
     vector<KdTree> kdTrees;
     int DEPTH;
 
-    Solution(const Input& input_) : input(input_), DEPTH(5 <= input.K && input.K <= 16 ? 5 : 4) {}
+    Solution(const Input& input_) : input(input_), DEPTH(5 <= input.K && input.K <= 18 ? (6 <= input.K && input.K <= 15 ? 6 : 5) : 4) {}
 
     Output solve() {
         init_kdtree();
@@ -406,6 +415,7 @@ struct Solution {
         vector<ContainerStatus> nodes;
         nodes.push_back(ContainerStatus());
         for (int i = 0; i < input.H; ++i) {
+            bool is_final = (i >= input.H - input.K);
             map<int, ContainerStatus> next_nodes_map;
             Point3D targetPoint(input.target[i]);
             for (const auto& node : nodes) {
@@ -413,7 +423,7 @@ struct Solution {
                     Point3D closestPoint = kdTrees[j].findClosestPoint(targetPoint);
                     ContainerStatus new_node = node;
                     new_node.add(input, closestPoint.ratio);
-                    if (next_nodes_map.count(new_node.turn) == 0 || next_nodes_map[new_node.turn].score > new_node.score) {
+                    if (next_nodes_map.count(new_node.turn) == 0 || next_nodes_map[new_node.turn].getScore(input, is_final) > new_node.getScore(input, is_final)) {
                         next_nodes_map[new_node.turn] = new_node;
                     }
                 }
@@ -424,7 +434,7 @@ struct Solution {
             for (const auto& [turn, next_node] : next_nodes_map) {
                 if (turn < min(input.T, input.T * (i + 1) / input.H + beam_width / 2)) {
                     next_nodes.push_back(next_node);
-                    sorted_nodes.emplace_back(next_node.score, next_nodes.size() - 1);
+                    sorted_nodes.emplace_back(next_node.getScore(input, is_final), next_nodes.size() - 1);
                 }
             }
             sort(sorted_nodes.begin(), sorted_nodes.end());
@@ -437,8 +447,9 @@ struct Solution {
         double best_score = numeric_limits<double>::max();
         ContainerStatus best_node;
         for (const auto& node : nodes) {
-            if (best_score > node.score) {
+            if (best_score > node.getScore(input, true)) {
                 best_node = node;
+                best_score = node.getScore(input, true);
             }
         }
 
