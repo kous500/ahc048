@@ -25,7 +25,7 @@ struct Color {
     }
 };
 
-constexpr Color mixed_color(const Color& c1, double r1, const Color& c2, double r2) {
+inline Color mixed_color(const Color& c1, double r1, const Color& c2, double r2) {
     double total_ratio = r1 + r2;
     return Color(
         (c1.C * r1 + c2.C * r2) / total_ratio,
@@ -51,7 +51,7 @@ struct Point3D {
 };
 
 // 2点間のユークリッド距離の2乗を計算する関数
-double distanceSquared(const Point3D& p1, const Point3D& p2) {
+constexpr double distanceSquared(const Point3D& p1, const Point3D& p2) {
     double dx = p1.x - p2.x;
     double dy = p1.y - p2.y;
     double dz = p1.z - p2.z;
@@ -213,32 +213,186 @@ struct Output {
     }
 };
 
+struct ContainerStatus {
+    vector<vector<int>> result;
+    vector<int> capacity;
+    int turn;
+
+    ContainerStatus() : capacity(SIZE, 0), turn(0) {}
+
+    void add(vector<int> ratio) {
+        result.push_back(ratio);
+        for (int i = 0; i < SIZE; ++i) {
+            if (ratio[i] == LIMIT) {
+                turn += 2;
+                return;
+            }
+        }
+        for (int i = 0; i < SIZE; ++i) {
+            if (capacity[i] < ratio[i]) {
+                capacity[i] += LIMIT - ratio[i];
+                if (capacity[i] == 0) {
+                    turn += 3;
+                } else {
+                    turn += 5;
+                }
+            } else {
+                capacity[i] -= ratio[i];
+                turn += 2;
+            }
+            turn += 1;
+        }
+    }
+
+    Output toOutput() const {
+        Output output(SIZE);
+        for (int i = 0; i < SIZE - 1; ++i) {
+            for (int j = 0; j < SIZE - 1; ++j) {
+                output.v[i][j] = true;
+            }
+        }
+        for (int i = 0; i < SIZE; ++i) {
+            output.h[LIMIT - 1][i] = true;
+        }
+
+        vector<int> now_capacity(SIZE, 0);
+        for (const auto& ratio : result) {
+            bool is_full = false;
+            for (int i = 0; i < SIZE; ++i) {
+                if (ratio[i] == LIMIT) {
+                    output.add(SIZE - 1, SIZE - 1, i);
+                    output.submission(SIZE - 1, SIZE - 1);
+                    is_full = true;
+                    continue;
+                }
+            }
+            if (is_full) continue;
+
+            for (int i = 0; i < SIZE; ++i) {
+                if (ratio[i] == 0) continue;
+                if (now_capacity[i] < ratio[i]) {
+                    if (now_capacity[i] == 0) {
+                        output.add(LIMIT - 1, i, i);
+                    } else {
+                        output.partition(now_capacity[i] + LIMIT - 1, i, now_capacity[i] + LIMIT, i);
+                        output.add(now_capacity[i] + LIMIT - 1, i, i);
+                        output.partition(now_capacity[i] - 1, i, now_capacity[i], i);
+                    }
+                    output.partition(now_capacity[i] + LIMIT - ratio[i] - 1, i, now_capacity[i] + LIMIT - ratio[i], i);
+                } else {
+                    if (now_capacity[i] - ratio[i] != 0) {
+                        output.partition(now_capacity[i] - ratio[i] - 1, i, now_capacity[i] - ratio[i], i);
+                    }
+                }
+            }
+            
+            for (int i = 0; i < SIZE; ++i) {
+                if (ratio[i] == 0) continue;
+                if (now_capacity[i] < ratio[i]) {
+                    output.partition(now_capacity[i] + LIMIT - 1, i, now_capacity[i] + LIMIT, i);
+                } else {
+                    output.partition(now_capacity[i] - 1, i, now_capacity[i], i);
+                }
+            }
+            output.submission(SIZE - 1, SIZE - 1);
+            for (int i = 0; i < SIZE; ++i) {
+                if (ratio[i] == 0) continue;
+                if (now_capacity[i] < ratio[i]) {
+                    now_capacity[i] += LIMIT - ratio[i];
+                } else {
+                    if (now_capacity[i] - ratio[i] == 0) {
+                        output.partition(LIMIT - 1, i, LIMIT, i);
+                    }
+                    now_capacity[i] -= ratio[i];
+                }
+            }
+        }
+
+        return output;
+    }
+
+    const int SIZE = 20;
+    const int LIMIT = 10;
+};
+
+struct Solution {
+    Input input;
+
+    Solution(const Input& input_) : input(input_) {}
+
+    Output solve() {
+        vector<Point3D> points1;
+        for (int i = 0; i < input.K; ++i) {
+            vector<int> ratio(20, 0);
+            ratio[i] = 10;
+            points1.emplace_back(input.own[i], ratio);
+        }
+        KdTree kdTree1;
+        kdTree1.build(points1);
+
+        vector<Point3D> points2;
+        for (int i = 0; i < input.K - 1; ++i) {
+            for (int j = i + 1; j < input.K; ++j) {
+                for (int k = 1; k < 10; ++k) {
+                    Color mixed = mixed_color(input.own[i], k, input.own[j], 10 - k);
+                    vector<int> ratio(20, 0);
+                    ratio[i] = k;
+                    ratio[j] = 10 - k;
+                    Point3D point(mixed, ratio);
+                    points2.push_back(point);
+                }
+            }
+        }
+        KdTree kdTree2;
+        kdTree2.build(points2);
+
+        vector<Point3D> points3;
+        for (int i = 0; i < input.K - 2; ++i) {
+            for (int j = i + 1; j < input.K - 1; ++j) {
+                for (int k = j + 1; k < input.K; ++k) {
+                    for (int l = 1; l < 9; ++l) {
+                        for (int m = 1; m < 10 - l; ++m) {
+                            vector<int> ratio(20, 0);
+                            ratio[i] = l;
+                            ratio[j] = m;
+                            ratio[k] = 10 - l - m;
+                            Color mixed = mixed_color(input.own[i], l, input.own[j], m);
+                            mixed = mixed_color(mixed, l + m, input.own[k], 10 - l - m);
+                            Point3D point(mixed, ratio);
+                            points3.push_back(point);
+                        }
+                    }
+                }
+            }
+        }
+        KdTree kdTree3;
+        kdTree3.build(points3);
+
+        ContainerStatus containerStatus;
+        for (int i = 0; i < input.H; ++i) {
+            Point3D targetPoint(input.target[i]);
+            Point3D closestPoint1 = kdTree1.findClosestPoint(targetPoint);
+            Point3D closestPoint2 = kdTree2.findClosestPoint(targetPoint);
+            Point3D closestPoint3 = kdTree3.findClosestPoint(targetPoint);
+
+            if (input.T - containerStatus.turn - 20 > (input.H - i) * 2) {
+                containerStatus.add(closestPoint3.ratio);
+            } else {
+                containerStatus.add(closestPoint1.ratio);
+            }
+        }
+
+        return containerStatus.toOutput();
+    }
+};
+
 int main() {
     Input input;
     cin >> input;
-    Output output(input.N);
 
-    vector<Point3D> points;
-    for (int i = 0; i < input.K; ++i) {
-        for (int j = 0; j < input.K; ++j) {
-            if (i == j) continue;
-            for (int k = 1; k <= 10; ++k) {
-                Color mixed = mixed_color(input.own[i], k, input.own[j], 10 - k);
-                vector<int> ratio(20, 0);
-                ratio[i] = k;
-                ratio[j] = 10 - k;
-                Point3D point(mixed, ratio);
-                points.push_back(point);
-            }
-        }
-    }
-    KdTree kdTree;
-    kdTree.build(points);
-    for (int i = 0; i < input.H; ++i) {
-        
-    }
-
-    cout << output;
+    Solution solution(input);
+    Output output = solution.solve();
+    cout << output << flush;
 
     return 0;
 }
