@@ -11,7 +11,7 @@ constexpr double pow2(double x) {
 
 struct Color {
     double C, M, Y;
-    Color(double c = 0, double m = 0, double y = 0) : C(c), M(m), Y(y) {}
+    Color(double C_ = 0, double M_ = 0, double Y_ = 0) : C(C_), M(M_), Y(Y_) {}
 
     double distance(const Color& other) const {
         return sqrt(pow2(C - other.C) + pow2(M - other.M) + pow2(Y - other.Y));
@@ -25,13 +25,22 @@ struct Color {
     }
 };
 
+constexpr Color mixed_color(const Color& c1, double r1, const Color& c2, double r2) {
+    double total_ratio = r1 + r2;
+    return Color(
+        (c1.C * r1 + c2.C * r2) / total_ratio,
+        (c1.M * r1 + c2.M * r2) / total_ratio,
+        (c1.Y * r1 + c2.Y * r2) / total_ratio
+    );
+}
+
 // 3次元座標を表す構造体
 struct Point3D {
     double x, y, z;
-    int id; // 必要であれば元のインデックスなどを保持
+    vector<int> ratio;
 
-    Point3D(double x_ = 0.0, double y_ = 0.0, double z_ = 0.0, int id_ = -1)
-        : x(x_), y(y_), z(z_), id(id_) {}
+    Point3D(Color color = Color(), vector<int> ratio_ = vector<int>(20))
+        : x(color.C), y(color.M), z(color.Y), ratio(std::move(ratio_)) {}
 
     // 指定された軸の座標値を返す
     double getCoord(int axis) const {
@@ -76,7 +85,7 @@ public:
     // 最も近い点を見つける
     Point3D findClosestPoint(const Point3D& target) const {
         if (!root) {
-            throw std::runtime_error("k-d木が構築されていません、または空です。");
+            throw std::runtime_error("KdTree is empty.");
         }
         Point3D bestPoint = root->point; // 初期値をルートノードの点とする
         double bestDistSq = distanceSquared(target, root->point);
@@ -209,19 +218,24 @@ int main() {
     cin >> input;
     Output output(input.N);
 
-    // k-d木を使用して、各ターゲットカラーに対して最も近いownカラーを見つける
     vector<Point3D> points;
     for (int i = 0; i < input.K; ++i) {
-        points.emplace_back(input.own[i].C, input.own[i].M, input.own[i].Y, i);
+        for (int j = 0; j < input.K; ++j) {
+            if (i == j) continue;
+            for (int k = 1; k <= 10; ++k) {
+                Color mixed = mixed_color(input.own[i], k, input.own[j], 10 - k);
+                vector<int> ratio(20, 0);
+                ratio[i] = k;
+                ratio[j] = 10 - k;
+                Point3D point(mixed, ratio);
+                points.push_back(point);
+            }
+        }
     }
     KdTree kdTree;
     kdTree.build(points);
     for (int i = 0; i < input.H; ++i) {
-        Point3D targetPoint(input.target[i].C, input.target[i].M, input.target[i].Y);
-        Point3D closestPoint = kdTree.findClosestPoint(targetPoint);
-        int closestIndex = closestPoint.id;
-        output.add(0, 0, closestIndex);
-        output.submission(0, 0);
+        
     }
 
     cout << output;
