@@ -8,6 +8,27 @@ using namespace std;
 constexpr double pow2(double x) {
     return x * x;
 };
+constexpr int roundint(double x) {
+    return static_cast<int>(round(x));
+}
+
+template<typename F, typename S>
+inline ostream& operator<<(ostream& os, const pair<F, S>& p) {
+    os << "(" << p.first << ", " << p.second << ")";
+    return os;
+}
+template<typename T>
+inline ostream& operator<<(ostream& os, const vector<T>& vec) {
+    os << "[";
+    if (!vec.empty()) {
+        os << vec[0];
+        for (size_t i = 1; i < vec.size(); ++i) {
+            os << ", " << vec[i];
+        }
+    }
+    os << "]";
+    return os;
+}
 
 struct Color {
     double C, M, Y;
@@ -27,6 +48,14 @@ struct Color {
 
 inline Color mixed_color(const Color& c1, double r1, const Color& c2, double r2) {
     double total_ratio = r1 + r2;
+    return Color(
+        (c1.C * r1 + c2.C * r2) / total_ratio,
+        (c1.M * r1 + c2.M * r2) / total_ratio,
+        (c1.Y * r1 + c2.Y * r2) / total_ratio
+    );
+}
+inline Color mixed_color(const Color& c1, int r1, const Color& c2, int r2) {
+    int total_ratio = r1 + r2;
     return Color(
         (c1.C * r1 + c2.C * r2) / total_ratio,
         (c1.M * r1 + c2.M * r2) / total_ratio,
@@ -214,21 +243,27 @@ struct Output {
 };
 
 struct ContainerStatus {
+    static constexpr int SIZE = 20;
+    static constexpr int LIMIT = 10;
+
+    int turn;
+    int score;
     vector<vector<int>> result;
     vector<int> capacity;
-    int turn;
 
-    ContainerStatus() : capacity(SIZE, 0), turn(0) {}
+    ContainerStatus() : turn(0), score(0), capacity(SIZE, 0) {}
 
-    void add(vector<int> ratio) {
+    void add(const Input &input, vector<int> ratio) {
         result.push_back(ratio);
         for (int i = 0; i < SIZE; ++i) {
             if (ratio[i] == LIMIT) {
                 turn += 2;
+                score += roundint(input.target[result.size() - 1].distance(input.own[i]) * 10000);
                 return;
             }
         }
         for (int i = 0; i < SIZE; ++i) {
+            if (ratio[i] == 0) continue;
             if (capacity[i] < ratio[i]) {
                 capacity[i] += LIMIT - ratio[i];
                 if (capacity[i] == 0) {
@@ -240,18 +275,27 @@ struct ContainerStatus {
                 capacity[i] -= ratio[i];
                 turn += 2;
             }
-            turn += 1;
         }
+        turn += 1;
+
+        Color mixedColor;
+        int totalRatio = 0;
+        for (int i = 0; i < SIZE; ++i) {
+            if (ratio[i] == 0) continue;
+            mixedColor = mixed_color(mixedColor, totalRatio, input.own[i], ratio[i]);
+            totalRatio += ratio[i];
+        }
+        score += roundint(input.target[result.size() - 1].distance(mixedColor) * 10000);
     }
 
-    Output toOutput() const {
+    Output toOutput(const Input &input) const {
         Output output(SIZE);
         for (int i = 0; i < SIZE - 1; ++i) {
-            for (int j = 0; j < SIZE - 1; ++j) {
+            for (int j = 0; j < min(SIZE - 1, input.K); ++j) {
                 output.v[i][j] = true;
             }
         }
-        for (int i = 0; i < SIZE; ++i) {
+        for (int i = 0; i < input.K; ++i) {
             output.h[LIMIT - 1][i] = true;
         }
 
@@ -310,83 +354,102 @@ struct ContainerStatus {
 
         return output;
     }
-
-    const int SIZE = 20;
-    const int LIMIT = 10;
 };
 
 struct Solution {
     Input input;
+    vector<KdTree> kdTrees;
+    int DEPTH;
 
-    Solution(const Input& input_) : input(input_) {}
+    Solution(const Input& input_) : input(input_), DEPTH(5 <= input.K && input.K <= 16 ? 5 : 4) {}
 
     Output solve() {
-        vector<Point3D> points1;
-        for (int i = 0; i < input.K; ++i) {
-            vector<int> ratio(20, 0);
-            ratio[i] = 10;
-            points1.emplace_back(input.own[i], ratio);
-        }
-        KdTree kdTree1;
-        kdTree1.build(points1);
+        init_kdtree();
 
-        vector<Point3D> points2;
-        for (int i = 0; i < input.K - 1; ++i) {
-            for (int j = i + 1; j < input.K; ++j) {
-                for (int k = 1; k < 10; ++k) {
-                    Color mixed = mixed_color(input.own[i], k, input.own[j], 10 - k);
-                    vector<int> ratio(20, 0);
-                    ratio[i] = k;
-                    ratio[j] = 10 - k;
-                    Point3D point(mixed, ratio);
-                    points2.push_back(point);
+        int beam_width = 4;
+        ContainerStatus containerStatus = beam_search(beam_width);
+
+        return containerStatus.toOutput(input);
+    }
+
+    void init_kdtree() {
+        vector<vector<Point3D>> points(DEPTH);
+        vector<int> ratio(20, 0);
+        auto dfs = [&](auto&& self, int pt, int sum, Color color, int depth) -> void {
+            if (sum == 10) {
+                points[depth - 1].emplace_back(color, ratio);
+                return;
+            }
+            if (depth >= DEPTH) {
+                return;
+            }
+            if (pt >= input.K) {
+                return;
+            }
+            for (int npt = pt + 1; npt < input.K; ++npt) {
+                for (int k = 1; k <= 10 - sum; ++k) {
+                    ratio[npt] = k;
+                    Color mixed = mixed_color(input.own[npt], k, color, sum);
+                    self(self, npt, sum + k, mixed, depth + 1);
+                    ratio[npt] = 0;
                 }
             }
+        };
+        dfs(dfs, -1, 0, Color(), 0);
+        for (int i = 0; i < DEPTH; ++i) {
+            kdTrees.emplace_back();
+            kdTrees.back().build(points[i]);
         }
-        KdTree kdTree2;
-        kdTree2.build(points2);
+    }
 
-        vector<Point3D> points3;
-        for (int i = 0; i < input.K - 2; ++i) {
-            for (int j = i + 1; j < input.K - 1; ++j) {
-                for (int k = j + 1; k < input.K; ++k) {
-                    for (int l = 1; l < 9; ++l) {
-                        for (int m = 1; m < 10 - l; ++m) {
-                            vector<int> ratio(20, 0);
-                            ratio[i] = l;
-                            ratio[j] = m;
-                            ratio[k] = 10 - l - m;
-                            Color mixed = mixed_color(input.own[i], l, input.own[j], m);
-                            mixed = mixed_color(mixed, l + m, input.own[k], 10 - l - m);
-                            Point3D point(mixed, ratio);
-                            points3.push_back(point);
-                        }
+    ContainerStatus beam_search(int beam_width) {
+        vector<ContainerStatus> nodes;
+        nodes.push_back(ContainerStatus());
+        for (int i = 0; i < input.H; ++i) {
+            map<int, ContainerStatus> next_nodes_map;
+            Point3D targetPoint(input.target[i]);
+            for (const auto& node : nodes) {
+                for (int j = 0; j < DEPTH; ++j) {
+                    Point3D closestPoint = kdTrees[j].findClosestPoint(targetPoint);
+                    ContainerStatus new_node = node;
+                    new_node.add(input, closestPoint.ratio);
+                    if (next_nodes_map.count(new_node.turn) == 0 || next_nodes_map[new_node.turn].score > new_node.score) {
+                        next_nodes_map[new_node.turn] = new_node;
                     }
                 }
             }
-        }
-        KdTree kdTree3;
-        kdTree3.build(points3);
 
-        ContainerStatus containerStatus;
-        for (int i = 0; i < input.H; ++i) {
-            Point3D targetPoint(input.target[i]);
-            Point3D closestPoint1 = kdTree1.findClosestPoint(targetPoint);
-            Point3D closestPoint2 = kdTree2.findClosestPoint(targetPoint);
-            Point3D closestPoint3 = kdTree3.findClosestPoint(targetPoint);
-
-            if (input.T - containerStatus.turn - 20 > (input.H - i) * 2) {
-                containerStatus.add(closestPoint3.ratio);
-            } else {
-                containerStatus.add(closestPoint1.ratio);
+            vector<ContainerStatus> next_nodes;
+            vector<pair<int, int>> sorted_nodes;
+            for (const auto& [turn, next_node] : next_nodes_map) {
+                if (turn < min(input.T, input.T * (i + 1) / input.H + beam_width / 2)) {
+                    next_nodes.push_back(next_node);
+                    sorted_nodes.emplace_back(next_node.score, next_nodes.size() - 1);
+                }
+            }
+            sort(sorted_nodes.begin(), sorted_nodes.end());
+            nodes.clear();
+            for (int j = 0; j < min(beam_width, (int)sorted_nodes.size()); ++j) {
+                nodes.push_back(next_nodes[sorted_nodes[j].second]);
             }
         }
 
-        return containerStatus.toOutput();
+        double best_score = numeric_limits<double>::max();
+        ContainerStatus best_node;
+        for (const auto& node : nodes) {
+            if (best_score > node.score) {
+                best_node = node;
+            }
+        }
+
+        return best_node;
     }
 };
 
 int main() {
+    cin.tie(nullptr);
+    ios::sync_with_stdio(false);
+    
     Input input;
     cin >> input;
 
