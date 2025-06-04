@@ -5,6 +5,9 @@
 #include <bits/stdc++.h>
 using namespace std;
 
+static constexpr int DEPTHS[] = {1, 2, 3, 4, 5, 5, 7, 8, 7, 5, 10, 10, 10, 10, 7, 6, 6, 5, 5, 5};
+static constexpr int MAX_WIDTH = 400;
+
 constexpr double pow2(double x) {
     return x * x;
 };
@@ -223,16 +226,32 @@ struct Output {
 
     Output(int N) : v(N, vector<bool>(N - 1)), h(N - 1, vector<bool>(N)) {}
 
+    void add(pair<int, int> p, int k) {
+        operation.push_back({1, p.first, p.second, k});
+    }
+
     void add(int i, int j, int k) {
         operation.push_back({1, i, j, k});
+    }
+
+    void submission(pair<int, int> p) {
+        operation.push_back({2, p.first, p.second});
     }
 
     void submission(int i, int j) {
         operation.push_back({2, i, j});
     }
 
+    void remove(pair<int, int> p) {
+        operation.push_back({3, p.first, p.second});
+    }
+
     void remove(int i, int j) {
         operation.push_back({3, i, j});
+    }
+
+    void partition(pair<int, int> p1, pair<int, int> p2) {
+        operation.push_back({4, p1.first, p1.second, p2.first, p2.second});
     }
 
     void partition(int i1, int j1, int i2, int j2) {
@@ -259,9 +278,19 @@ struct Output {
     }
 };
 
-struct ContainerStatus {
-    static constexpr int LIMIT = 10;
+Input input;
+vector<vector<vector<pair<int, int>>>> closestRatio;
+int ratio_limit;
+int ratio_width;
 
+enum Direction {
+    UP = 0,
+    DOWN = 1,
+    LEFT = 2,
+    RIGHT = 3
+};
+
+struct ContainerStatus {
     int turn;
     int score;
     vector<int> result;
@@ -270,7 +299,7 @@ struct ContainerStatus {
     ContainerStatus() : turn(0), score(0) {}
     ContainerStatus(const Input &input) : turn(0), score(0), capacity(input.K, 0) {}
 
-    void add(const Input &input, const vector<vector<vector<pair<int, int>>>> &closestRatio, int index) {
+    void add(int index) {
         result.push_back(index);
         int targetIndex = result.size() - 1;
         int ratioSize = closestRatio[targetIndex][index].size();
@@ -288,7 +317,7 @@ struct ContainerStatus {
                 } else {
                     turn += 5;
                 }
-                capacity[colorIndex] += LIMIT - ratio;
+                capacity[colorIndex] += ratio_limit - ratio;
             } else {
                 capacity[colorIndex] -= ratio;
                 turn += 2;
@@ -312,19 +341,41 @@ struct ContainerStatus {
             return score;
         }
         else {
-            return score + accumulate(capacity.begin(), capacity.end(), 0) / 10 * input.D;
+            return score + accumulate(capacity.begin(), capacity.end(), 0) / ratio_limit * input.D;
         }
     }
 
-    Output toOutput(const Input &input, const vector<vector<vector<pair<int, int>>>> &closestRatio) const {
+    Output toOutput() const {
         Output output(input.N);
         for (int i = 0; i < input.N - 1; ++i) {
-            for (int j = 0; j < min(input.N - 1, input.K); ++j) {
+            for (int j = 0; j < min(input.N - 1, input.K * ratio_width); ++j) {
                 output.v[i][j] = true;
             }
         }
+        for (int i = 0; i < min(input.N - 1, input.K * ratio_width); ++i) {
+            int hi = i % ratio_width;
+            if (hi == ratio_width - 1) continue;
+            if ((ratio_width - hi) % 2 == 0) {
+                output.v[0][i] = false;
+            } else {
+                output.v[input.N - 2][i] = false;
+            }
+        }
+
+        for (int i = 0; i < input.K * ratio_width; ++i) {
+            if (i % ratio_width != ratio_width - 1) {
+                output.h[input.N - 2][i] = true;
+            }
+        }
+
         for (int i = 0; i < input.K; ++i) {
-            output.h[LIMIT - 1][i] = true;
+            auto [p, dir] = getPartitionPoints(i, ratio_limit);
+            switch (dir) {
+                case UP:    output.h[p.first - 1][p.second] = true; break;
+                case DOWN:  output.h[p.first][p.second] = true; break;
+                case LEFT:  output.v[p.first][p.second - 1] = true; break;
+                case RIGHT: output.v[p.first][p.second] = true; break;
+            }
         }
 
         vector<int> now_capacity(input.K, 0);
@@ -342,16 +393,16 @@ struct ContainerStatus {
                 int ratio_value = ratio[i].second;
                 if (now_capacity[color_index] < ratio_value) {
                     if (now_capacity[color_index] == 0) {
-                        output.add(LIMIT - 1, color_index, color_index);
+                        output.add(getPartitionPoints(color_index, ratio_limit).first, color_index);
                     } else {
-                        output.partition(now_capacity[color_index] + LIMIT - 1, color_index, now_capacity[color_index] + LIMIT, color_index);
-                        output.add(now_capacity[color_index] + LIMIT - 1, color_index, color_index);
-                        output.partition(now_capacity[color_index] - 1, color_index, now_capacity[color_index], color_index);
+                        setParttition(output, getPartitionPoints(color_index, now_capacity[color_index] + ratio_limit));
+                        output.add(getPartitionPoints(color_index, now_capacity[color_index] + ratio_limit).first, color_index);
+                        setParttition(output, getPartitionPoints(color_index, now_capacity[color_index]));
                     }
-                    output.partition(now_capacity[color_index] + LIMIT - ratio_value - 1, color_index, now_capacity[color_index] + LIMIT - ratio_value, color_index);
+                    setParttition(output, getPartitionPoints(color_index, now_capacity[color_index] + ratio_limit - ratio_value));
                 } else {
                     if (now_capacity[color_index] - ratio_value != 0) {
-                        output.partition(now_capacity[color_index] - ratio_value - 1, color_index, now_capacity[color_index] - ratio_value, color_index);
+                        setParttition(output, getPartitionPoints(color_index, now_capacity[color_index] - ratio_value));
                     }
                 }
             }
@@ -360,9 +411,9 @@ struct ContainerStatus {
                 int color_index = ratio[i].first;
                 int ratio_value = ratio[i].second;
                 if (now_capacity[color_index] < ratio_value) {
-                    output.partition(now_capacity[color_index] + LIMIT - 1, color_index, now_capacity[color_index] + LIMIT, color_index);
+                    setParttition(output, getPartitionPoints(color_index, now_capacity[color_index] + ratio_limit));
                 } else {
-                    output.partition(now_capacity[color_index] - 1, color_index, now_capacity[color_index], color_index);
+                    setParttition(output, getPartitionPoints(color_index, now_capacity[color_index]));
                 }
             }
             output.submission(input.N - 1, input.N - 1);
@@ -370,10 +421,10 @@ struct ContainerStatus {
                 int color_index = ratio[i].first;
                 int ratio_value = ratio[i].second;
                 if (now_capacity[color_index] < ratio_value) {
-                    now_capacity[color_index] += LIMIT - ratio_value;
+                    now_capacity[color_index] += ratio_limit - ratio_value;
                 } else {
                     if (now_capacity[color_index] - ratio_value == 0) {
-                        output.partition(LIMIT - 1, color_index, LIMIT, color_index);
+                        setParttition(output, getPartitionPoints(color_index, ratio_limit));
                     }
                     now_capacity[color_index] -= ratio_value;
                 }
@@ -382,32 +433,57 @@ struct ContainerStatus {
 
         return output;
     }
+
+    void setParttition(Output& output, pair<pair<int, int>, Direction> partition_points) const {
+        auto [p1, dir] = partition_points;
+        pair<int, int> p2 = directionToPoint(p1, dir);
+        output.partition(p1, p2);
+    }
+
+    pair<pair<int, int>, Direction> getPartitionPoints(int color_index, int capacity) const {
+        int h = (capacity - 1) / (input.N - 1);
+        int v = (ratio_width - h) % 2 == 0 
+            ? input.N - 1 - ((capacity - 1) % (input.N - 1)) - 1 
+            : (capacity - 1) % (input.N - 1);
+        
+        Direction dir = ((v == 0 && (ratio_width - h) % 2 == 0) || (v == input.N - 2 && (ratio_width - h) % 2 != 0)) 
+            ? RIGHT : ((ratio_width - h) % 2 == 0 ? UP : DOWN);
+
+        return {{v, h + ratio_width * color_index}, dir};
+    }
+
+    pair<int, int> directionToPoint(pair<int, int> p, Direction dir) const {
+        switch (dir) {
+            case UP:    return {p.first - 1, p.second};
+            case DOWN:  return {p.first + 1, p.second};
+            case LEFT:  return {p.first, p.second - 1};
+            case RIGHT: return {p.first, p.second + 1};
+        }
+        return p;
+    }
 };
 
 struct Solution {
-    static constexpr int DEPTHS[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 10, 7, 6, 6, 5, 5, 5};
-    static constexpr int MAX_WIDTH = 400;
-
-    Input input;
-    vector<vector<vector<pair<int, int>>>> closestRatio;
-
-    Solution(const Input& input_) : input(input_), closestRatio(input_.H) {}
+    Solution() = default;
 
     Output solve() {
-        get_closestRatio();
+        ratio_width = input.N / input.K;
+        ratio_limit = ((input.N - 1) * ratio_width + 2) / 2;
 
-        ContainerStatus containerStatus = beam_search(MAX_WIDTH);
+        setClosestRatio();
 
-        return containerStatus.toOutput(input, closestRatio);
+        ContainerStatus containerStatus = beamSearch(MAX_WIDTH);
+
+        return containerStatus.toOutput();
     }
 
-    void get_closestRatio() {
+    void setClosestRatio() {
         Timer timer;
         int max_depth = DEPTHS[input.K - 1];
         vector<vector<Point3D>> points(max_depth);
         vector<pair<int, int>> ratio;
         auto dfs = [&](auto&& self, int pt, int sum, Color color, int depth) -> void {
-            if (sum == 10) {
+            if (sum == ratio_limit) {
                 points[depth - 1].emplace_back(color, ratio);
                 return;
             }
@@ -418,7 +494,7 @@ struct Solution {
                 return;
             }
             for (int npt = pt + 1; npt < input.K; ++npt) {
-                for (int k = 1; k <= 10 - sum; ++k) {
+                for (int k = 1; k <= ratio_limit - sum; ++k) {
                     ratio.emplace_back(npt, k);
                     Color mixed = mixed_color(input.own[npt], k, color, sum);
                     self(self, npt, sum + k, mixed, depth + 1);
@@ -433,6 +509,7 @@ struct Solution {
             kdTrees[i].build(points[i]);
         }
 
+        closestRatio.resize(input.H);
         for (int i = 0; i < max_depth; ++i) {
             for (int j = 0; j < input.H; ++j) {
                 Point3D targetPoint(input.target[j]);
@@ -441,7 +518,7 @@ struct Solution {
         }
     }
 
-    ContainerStatus beam_search(int beam_width) {
+    ContainerStatus beamSearch(int beam_width) {
         vector<ContainerStatus> nodes;
         nodes.push_back(ContainerStatus(input));
         for (int i = 0; i < input.H; ++i) {
@@ -453,7 +530,7 @@ struct Solution {
             for (const auto& node : nodes) {
                 for (int j = 0; j < (int)closestRatio[i].size(); ++j) {
                     ContainerStatus new_node = node;
-                    new_node.add(input, closestRatio, j);
+                    new_node.add(j);
                     if (next_nodes_map.count(new_node.turn) == 0 
                             || next_nodes[next_nodes_map[new_node.turn]].getScore(input, is_final) > new_node.getScore(input, is_final)) {
                         next_nodes.push_back(new_node);
@@ -491,11 +568,8 @@ int main() {
     cin.tie(nullptr);
     ios::sync_with_stdio(false);
     
-    Input input;
     cin >> input;
-
-    Solution solution(input);
-    Output output = solution.solve();
+    Output output = Solution().solve();
     cout << output << flush;
 
     return 0;
