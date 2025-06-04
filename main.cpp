@@ -73,15 +73,13 @@ inline Color mixed_color(const Color& c1, int r1, const Color& c2, int r2) {
     );
 }
 
-// 3次元座標を表す構造体
 struct Point3D {
     double x, y, z;
     vector<pair<int, int>> ratio;
 
     Point3D(Color color = Color(), vector<pair<int, int>> ratio_ = vector<pair<int, int>>())
-        : x(color.C), y(color.M), z(color.Y), ratio(std::move(ratio_)) {}
+        : x(color.C), y(color.M), z(color.Y), ratio(move(ratio_)) {}
 
-    // 指定された軸の座標値を返す
     double getCoord(int axis) const {
         if (axis == 0) return x;
         if (axis == 1) return y;
@@ -89,7 +87,6 @@ struct Point3D {
     }
 };
 
-// 2点間のユークリッド距離の2乗を計算する関数
 constexpr double distanceSquared(const Point3D& p1, const Point3D& p2) {
     double dx = p1.x - p2.x;
     double dy = p1.y - p2.y;
@@ -449,24 +446,25 @@ struct Solution {
         nodes.push_back(ContainerStatus(input));
         for (int i = 0; i < input.H; ++i) {
             bool is_final = (i >= input.H - input.K);
-            unordered_map<int, ContainerStatus> next_nodes_map;
+            unordered_map<int, int> next_nodes_map;
+            vector<ContainerStatus> next_nodes;
+
             Point3D targetPoint(input.target[i]);
             for (const auto& node : nodes) {
                 for (int j = 0; j < (int)closestRatio[i].size(); ++j) {
                     ContainerStatus new_node = node;
                     new_node.add(input, closestRatio, j);
-                    if (next_nodes_map.count(new_node.turn) == 0 || next_nodes_map[new_node.turn].getScore(input, is_final) > new_node.getScore(input, is_final)) {
-                        next_nodes_map[new_node.turn] = new_node;
+                    if (next_nodes_map.count(new_node.turn) == 0 
+                            || next_nodes[next_nodes_map[new_node.turn]].getScore(input, is_final) > new_node.getScore(input, is_final)) {
+                        next_nodes.push_back(new_node);
+                        next_nodes_map[new_node.turn] = next_nodes.size() - 1;
                     }
                 }
             }
-
-            vector<ContainerStatus> next_nodes;
             vector<pair<int, int>> sorted_nodes;
             for (const auto& [turn, next_node] : next_nodes_map) {
                 if (turn < min(input.T, input.T * (i + 1) / input.H + beam_width / 2)) {
-                    next_nodes.push_back(next_node);
-                    sorted_nodes.emplace_back(next_node.getScore(input, is_final), next_nodes.size() - 1);
+                    sorted_nodes.emplace_back(next_nodes[next_node].getScore(input, is_final), next_node);
                 }
             }
             sort(sorted_nodes.begin(), sorted_nodes.end());
