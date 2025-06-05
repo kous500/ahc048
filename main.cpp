@@ -342,7 +342,11 @@ struct ContainerStatus {
             return score;
         }
         else {
-            return score + accumulate(capacity.begin(), capacity.end(), 0) / ratio_limit * input.D;
+            int sum = 0;
+            for (int i = 0; i < (int)capacity.size(); ++i) {
+                sum += capacity[i] % (ratio_limit * 2);
+            }
+            return score + sum / ratio_limit * input.D;
         }
     }
 
@@ -366,6 +370,40 @@ struct ContainerStatus {
         for (int i = 0; i < ratio_count * ratio_width; ++i) {
             if (i % ratio_width != ratio_width - 1) {
                 output.h[input.N - 2][i] = true;
+            }
+        }
+
+        vector<vector<int>> capacity_res(input.H, vector<int>(ratio_stack));
+        
+        for (int ti = 0; ti < (int)result.size(); ++ti) {
+            const auto& ratio = closestRatio[ti][result[ti]];
+            if ((int)ratio.size() == 1) {
+                continue;
+            }
+            for (int i = 0; i < (int)ratio.size(); ++i) {
+                int color_index = ratio[i].first;
+                int ratio_value = ratio[i].second;
+                if (now_capacity[color_index] < ratio_value) {
+                    if (now_capacity[color_index] == 0) {
+                        for (int j = 0; j < ratio_stack; ++j) {
+                            output.add(getPartitionPoints(color_index, ratio_limit * ratio_stack).first, color_index);
+                        }
+                    } else {
+                        for (int j = 0; j < ratio_stack; ++j) {
+                            output.add(getPartitionPoints(color_index, now_capacity[color_index] + ratio_limit * ratio_stack).first, color_index);
+                        }
+                    }
+                } else {
+                }
+            }
+            for (int i = 0; i < (int)ratio.size(); ++i) {
+                int color_index = ratio[i].first;
+                int ratio_value = ratio[i].second;
+                if (now_capacity[color_index] < ratio_value) {
+                    now_capacity[color_index] += ratio_limit * ratio_stack - ratio_value;
+                } else {
+                    now_capacity[color_index] -= ratio_value;
+                }
             }
         }
 
