@@ -301,9 +301,10 @@ struct ContainerStatus {
     int score;
     vector<int> result;
     vector<int> capacity;
+    vector<bool> used;
     vector<int> turnlog;
 
-    ContainerStatus() : turn(ratio_count * ratio_stack), score(0), capacity(ratio_count, ratio_stack * ratio_limit) {}
+    ContainerStatus() : turn(0), score(0), capacity(ratio_count), used(ratio_count) {}
 
     void add(int index) {
         result.push_back(index);
@@ -325,6 +326,10 @@ struct ContainerStatus {
                 } else {
                     //cout << "add turn: " << ratio_stack + 4 << endl;
                     turn += ratio_stack + 4;
+                }
+                if (!used[colorIndex]) {
+                    turn--;
+                    used[colorIndex] = true;
                 }
                 capacity[colorIndex] += ratio_limit * ratio_stack - ratio;
             } else if (capacity[colorIndex] > ratio) {
@@ -393,8 +398,8 @@ struct ContainerStatus {
         vector<vector<int>> capacity_res(input.H + 1, vector<int>(ratio_count));
         vector<vector<int>> add_res(input.H, vector<int>(ratio_count));
         vector<int> last_add(ratio_count, -1);
-
-        capacity_res[0].assign(ratio_count, ratio_limit * ratio_stack);
+        vector<int> first_add(ratio_count, -1);
+        vector<int> pre_partition(ratio_count, ratio_stack * ratio_limit);
         
         for (int ti = 0; ti < input.H; ++ti) {
             const auto& ratio = closestRatio[ti][result[ti]];
@@ -409,14 +414,11 @@ struct ContainerStatus {
                     capacity_res[ti + 1][color_index] += ratio_limit * ratio_stack - ratio_value;
                     add_res[ti][color_index] = ratio_stack;
                     last_add[color_index] = ti;
+                    if (first_add[color_index] == -1) first_add[color_index] = ti;
                 } else {
                     capacity_res[ti + 1][color_index] -= ratio_value;
                 }
             }
-        }
-
-        for (int i = 0; i < input.H; ++i) {
-            //cout << capacity_res[i] << endl;
         }
 
         for (int i = 0; i < ratio_count; ++i) {
@@ -431,19 +433,20 @@ struct ContainerStatus {
             if (last_add[i] != -1) {
                 add_res[last_add[i]][i] -= surplus;
             }
+            if (first_add[i] == last_add[i]) {
+                pre_partition[i] -= surplus * ratio_limit;
+            }
         }
 
         for (int i = 0; i < ratio_count; ++i) {
-            if (capacity_res[0][i] == 0) continue;
-            auto [p, dir] = getPartitionPoints(i, capacity_res[0][i]);
+            if (pre_partition[i] == 0) continue;
+            auto [p, dir] = getPartitionPoints(i, pre_partition[i]);
             switch (dir) {
                 case UP:    output.h[p.first - 1][p.second] = true; break;
                 case DOWN:  output.h[p.first][p.second] = true; break;
                 case LEFT:  output.v[p.first][p.second - 1] = true; break;
                 case RIGHT: output.v[p.first][p.second] = true; break;
             }
-
-            output.add(p, i, capacity_res[0][i] / ratio_limit);
         }
 
         for (int ti = 0; ti < (int)result.size(); ++ti) {
@@ -463,7 +466,9 @@ struct ContainerStatus {
                 //cout << "set partition for color index: " << color_index 
                     // << ", ratio value: " << ratio_value << ", capacity: " << capacity_res[ti][color_index] << ", add_res: " << add_res[ti][color_index]  << endl;
                 if (capacity_res[ti][color_index] < ratio_value) {
-                    setParttition(output, getPartitionPoints(color_index, capacity_res[ti][color_index] + ratio_limit * add_res[ti][color_index]));
+                    if (first_add[color_index] != ti) {
+                        setParttition(output, getPartitionPoints(color_index, capacity_res[ti][color_index] + ratio_limit * add_res[ti][color_index]));
+                    }
                     output.add(getPartitionPoints(color_index, capacity_res[ti][color_index] + ratio_limit * add_res[ti][color_index]).first, color_index, add_res[ti][color_index]);
                     if (capacity_res[ti][color_index] != 0) {
                         setParttition(output, getPartitionPoints(color_index, capacity_res[ti][color_index]));
