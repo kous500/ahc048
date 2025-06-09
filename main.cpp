@@ -6,7 +6,6 @@
 using namespace std;
 
 constexpr int DEPTHS[] = {1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 10, 10, 10, 10, 8, 7, 7, 6, 6, 5};
-constexpr int MAX_WIDTH = 400;
 
 // 固定値
 constexpr int N = 20;
@@ -510,14 +509,15 @@ struct Solution {
     Solution() = default;
 
     Output solve() {
+        ratio_count = input.K;
+        if (ratio_count == 11 || ratio_count == 12) {
+            ratio_count = 10;
+        }
         if (input.T < 8000) {
-            ratio_count = input.K;
             ratio_stack = 3;
         } else if (input.T < 10000) {
-            ratio_count = input.K;
             ratio_stack = 2;
         } else {
-            ratio_count = input.K;
             ratio_stack = 1;
         }
         ratio_width = N / ratio_count;
