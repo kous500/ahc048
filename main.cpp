@@ -5,7 +5,7 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-constexpr int DEPTHS[] = {1, 2, 3, 4, 5, 5, 7, 8, 7, 5, 10, 10, 10, 10, 7, 6, 6, 5, 5, 5};
+constexpr int DEPTHS[] = {1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 10, 10, 10, 10, 8, 7, 7, 6, 6, 5};
 constexpr int MAX_WIDTH = 400;
 
 // 固定値
@@ -505,6 +505,8 @@ struct ContainerStatus {
 };
 
 struct Solution {
+    int count = 0;
+
     Solution() = default;
 
     Output solve() {
@@ -523,12 +525,17 @@ struct Solution {
 
         setClosestRatio();
 
-        ContainerStatus containerStatus = beamSearch(MAX_WIDTH);
+        ContainerStatus containerStatus = beamSearch(count >= 2500000 ? 200 : 400);
 
         return containerStatus.toOutput();
     }
 
     void setClosestRatio() {
+        int max_count = 3700000;
+        if (ratio_count == 10) max_count = 3000000;
+        if (ratio_count == 17) max_count = 3000000;
+        if (ratio_count == 18) max_count = 3100000;
+        if (ratio_count == 19) max_count = 2600000;
         Timer timer;
         int max_depth = min(ratio_limit, DEPTHS[ratio_count - 1]);
         vector<vector<Point3D>> points(max_depth);
@@ -554,19 +561,31 @@ struct Solution {
             }
         };
         dfs(dfs, -1, 0, Color(), 0);
+        cerr << "setClosestRatio time: " << timer.get() << " seconds" << endl;
 
-        vector<KdTree> kdTrees(max_depth);
+        vector<KdTree> kdTrees;
         for (int i = 0; i < max_depth; ++i) {
-            kdTrees[i].build(points[i]);
+            vector<Point3D> pointSet;
+            for (int j = 0; j < (int)points[i].size(); ++j) {
+                pointSet.push_back(points[i][j]);
+                count++;
+                if (count >= max_count) break;
+            }
+            kdTrees.push_back(KdTree());
+            kdTrees.back().build(pointSet);
+            if (count >= max_count) break;
         }
+        cerr << "KdTree build time: " << timer.get() << " seconds" << endl;
+        cerr << "Count: " << count << endl;
 
         closestRatio.resize(H);
-        for (int i = 0; i < max_depth; ++i) {
+        for (int i = 0; i < (int)kdTrees.size(); ++i) {
             for (int j = 0; j < H; ++j) {
                 Point3D targetPoint(input.target[j]);
                 closestRatio[j].push_back(kdTrees[i].findClosestPoint(targetPoint).ratio);
             }
         }
+        cerr << "Closest ratio set time: " << timer.get() << " seconds" << endl;
     }
 
     ContainerStatus beamSearch(int beam_width) {
